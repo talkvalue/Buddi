@@ -3,7 +3,9 @@
   <p>A macOS notch companion for <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code</a>.</p>
 </div>
 
-<!-- TODO: add demo screenshot/gif -->
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/57485151-38a5-4c2c-89d4-9764475243d7" autoplay loop muted playsinline width="100%"></video>
+</div>
 
 ---
 
