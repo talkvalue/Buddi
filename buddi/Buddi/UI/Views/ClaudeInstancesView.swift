@@ -72,6 +72,7 @@ struct ClaudeInstancesView: View {
                     InstanceRow(
                         session: session,
                         onFocus: { focusSession(session) },
+                        onTerminal: { openTerminalView(session) },
                         onChat: { openChat(session) },
                         onArchive: { archiveSession(session) },
                         onApprove: { approveSession(session) },
@@ -103,6 +104,15 @@ struct ClaudeInstancesView: View {
         viewModel.showChat(for: session)
     }
 
+    private func openTerminalView(_ session: SessionState) {
+        // cmux-only sessions fall back to chat view (PTY attach for cmux not yet implemented)
+        if session.isInCmux && !session.isInTmux {
+            viewModel.showChat(for: session)
+        } else {
+            viewModel.showTerminal(for: session)
+        }
+    }
+
     private func approveSession(_ session: SessionState) {
         sessionMonitor.approvePermission(sessionId: session.sessionId)
     }
@@ -121,6 +131,7 @@ struct ClaudeInstancesView: View {
 struct InstanceRow: View {
     let session: SessionState
     let onFocus: () -> Void
+    let onTerminal: () -> Void
     let onChat: () -> Void
     let onArchive: () -> Void
     let onApprove: () -> Void
@@ -273,7 +284,7 @@ struct InstanceRow: View {
         .padding(.vertical, 10)
         .contentShape(Rectangle())
         .onTapGesture {
-            onChat()
+            onTerminal()
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isWaitingForApproval)
         .background(

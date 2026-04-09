@@ -28,6 +28,14 @@ class BuddyPanelViewModel: ObservableObject {
         contentType = .chat(session)
     }
 
+    /// Show the embedded terminal view for `session`.
+    ///
+    /// Temporarily falls back to the chat view until the `.terminal` navigation
+    /// case lands in the sibling embedded-terminal PR.
+    func showTerminal(for session: SessionState) {
+        showChat(for: session)
+    }
+
     func exitChat() {
         currentChatSession = nil
         contentType = .instances
