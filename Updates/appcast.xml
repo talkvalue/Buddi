@@ -2,5 +2,13 @@
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>Buddi</title>
+        <item>
+            <title>0.1.0</title>
+            <pubDate>Thu, 09 Apr 2026 04:39:17 +0000</pubDate>
+            <sparkle:version>1</sparkle:version>
+            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/talkvalue/Buddi/releases/download/v0.1.0/buddi-0.1.0.dmg" length="9748523" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
