@@ -4,8 +4,10 @@
 </div>
 
 <div align="center">
-  <video src="https://github.com/user-attachments/assets/57485151-38a5-4c2c-89d4-9764475243d7" autoplay loop muted playsinline width="100%"></video>
+  <video src="https://github.com/user-attachments/assets/3856b8c7-ca83-4672-b8d2-3c58ac65f2e9" autoplay loop muted playsinline width="100%"></video>
 </div>
+
+Anthropic removed /buddy from Claude Code in v2.1.97. Buddi gives your buddy a permanent home in the MacBook notch.
 
 ---
 
