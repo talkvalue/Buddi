@@ -229,6 +229,18 @@ jobs:
             git commit -m "chore: update appcast for v$VERSION"
           git push origin main
 
+      - name: Deploy appcast to GitHub Pages
+        run: |
+          cp Updates/appcast.xml /tmp/appcast.xml
+          git checkout --orphan gh-pages-tmp
+          git rm -rf . --quiet
+          cp /tmp/appcast.xml appcast.xml
+          git add appcast.xml
+          git commit -m "Update appcast for v${{ steps.version.outputs.VERSION }}"
+          git push origin gh-pages-tmp:gh-pages --force
+          git checkout main
+          git branch -D gh-pages-tmp
+
       - name: Update Homebrew cask
         env:
           VERSION: ${{ steps.version.outputs.VERSION }}
