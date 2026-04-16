@@ -3,6 +3,14 @@
     <channel>
         <title>Buddi</title>
         <item>
+            <title>0.1.2</title>
+            <pubDate>Thu, 16 Apr 2026 08:00:58 +0000</pubDate>
+            <sparkle:version>272</sparkle:version>
+            <sparkle:shortVersionString>0.1.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/talkvalue/Buddi/releases/download/v0.1.2/buddi-0.1.2.dmg" length="9747263" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>0.1.1</title>
             <pubDate>Thu, 16 Apr 2026 04:12:17 +0000</pubDate>
             <sparkle:version>2</sparkle:version>
