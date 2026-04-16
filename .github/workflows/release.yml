@@ -24,8 +24,17 @@ jobs:
     timeout-minutes: 45
 
     steps:
+      - name: Generate App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Show Xcode version
         run: |
@@ -209,8 +218,8 @@ jobs:
         run: |
           cp Updates/appcast.xml /tmp/appcast.xml
           git restore Updates/appcast.xml
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "buddi-release-bot[bot]"
+          git config user.email "buddi-release-bot[bot]@users.noreply.github.com"
           git fetch origin main
           git checkout main
           git pull origin main
