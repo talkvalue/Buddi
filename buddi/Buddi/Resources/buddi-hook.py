@@ -25,6 +25,38 @@ _AGENT_TOOLS = {"Agent", "WebSearch", "WebFetch"}
 # Style tracking
 # ---------------------------------------------------------------------------
 
+def _update_style(updates: dict) -> None:
+    """Atomically apply incremental updates to the style file using an flock."""
+    import fcntl
+
+    lock_path = STYLE_PATH + ".lock"
+    try:
+        lock_fd = open(lock_path, "w")
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        try:
+            try:
+                with open(STYLE_PATH) as f:
+                    style = json.load(f)
+            except (OSError, json.JSONDecodeError):
+                style = {}
+
+            for key, value in updates.items():
+                if key == "tools":
+                    tools = style.setdefault("tools", {})
+                    for tool_name, count in value.items():
+                        tools[tool_name] = tools.get(tool_name, 0) + count
+                else:
+                    style[key] = style.get(key, 0) + value
+
+            with open(STYLE_PATH, "w") as f:
+                json.dump(style, f)
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
+    except OSError:
+        pass
+
+
 def _load_style() -> dict:
     try:
         with open(STYLE_PATH) as f:
@@ -33,33 +65,16 @@ def _load_style() -> dict:
         return {}
 
 
-def _save_style(style: dict) -> None:
-    try:
-        with open(STYLE_PATH, "w") as f:
-            json.dump(style, f)
-    except OSError:
-        pass
-
-
 def _record_tool(tool_name: str) -> None:
-    """Accumulate one tool-use event into the style file."""
-    style = _load_style()
-    tools = style.setdefault("tools", {})
-    tools[tool_name] = tools.get(tool_name, 0) + 1
-    style["total_tool_calls"] = style.get("total_tool_calls", 0) + 1
-    _save_style(style)
+    _update_style({"tools": {tool_name: 1}, "total_tool_calls": 1})
 
 
 def _record_denial() -> None:
-    style = _load_style()
-    style["denials"] = style.get("denials", 0) + 1
-    _save_style(style)
+    _update_style({"denials": 1})
 
 
 def _record_session_end() -> None:
-    style = _load_style()
-    style["sessions"] = style.get("sessions", 0) + 1
-    _save_style(style)
+    _update_style({"sessions": 1})
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +127,7 @@ class _Mulberry32:
 
 
 def _fnv1a_32(data: bytes) -> int:
-    """FNV-1a 32-bit — used to fold the style delta into the seed."""
+    """FNV-1a 32-bit — folds the style delta into the seed."""
     h = 0x811c9dc5
     for b in data:
         h ^= b
@@ -120,65 +135,85 @@ def _fnv1a_32(data: bytes) -> int:
     return h
 
 
+_WYHASH_SECRET = [
+    0xa0761d6478bd642f,
+    0xe7037ed1a0b428db,
+    0x8ebc6af09c88c6e3,
+    0x589965cc75374cc3,
+]
+
+M64 = 0xFFFFFFFFFFFFFFFF
+
+
+def _wy_read(buf: bytes, offset: int, n: int) -> int:
+    v = 0
+    for i in range(n):
+        idx = offset + i
+        if idx < len(buf):
+            v |= buf[idx] << (i * 8)
+    return v
+
+
+def _wy_mum(a: int, b: int):
+    p = a * b
+    return p & M64, (p >> 64) & M64
+
+
+def _wy_mix(a: int, b: int) -> int:
+    lo, hi = _wy_mum(a, b)
+    return (lo ^ hi) & M64
+
+
 def _wyhash(key: str) -> int:
-    """
-    Minimal wyhash port matching Wyhash.swift (seed=0, short-string path).
-    Covers strings up to 16 bytes — sufficient for a UUID.
-    Falls back to FNV-1a for longer strings; the result is still a stable
-    deterministic seed, just not byte-identical to the Swift version.
-    """
+    """Full wyhash port matching Wyhash.swift (seed=0). Handles any key length."""
     data = key.encode()
     length = len(data)
-
-    def read(buf: bytes, offset: int, n: int) -> int:
-        v = 0
-        for i in range(n):
-            idx = offset + i
-            if idx < len(buf):
-                v |= buf[idx] << (i * 8)
-        return v
-
-    SECRET = [
-        0xa0761d6478bd642f,
-        0xe7037ed1a0b428db,
-        0x8ebc6af09c88c6e3,
-        0x589965cc75374cc3,
-    ]
-
-    def mum(a: int, b: int):
-        product = (a * b)
-        low = product & 0xFFFFFFFFFFFFFFFF
-        high = (product >> 64) & 0xFFFFFFFFFFFFFFFF
-        return low, high
-
-    def mix(a: int, b: int) -> int:
-        lo, hi = mum(a, b)
-        return (lo ^ hi) & 0xFFFFFFFFFFFFFFFF
+    s = _WYHASH_SECRET
 
     seed = 0
-    state0 = (seed ^ mix((seed ^ SECRET[0]) & 0xFFFFFFFFFFFFFFFF,
-                          SECRET[1])) & 0xFFFFFFFFFFFFFFFF
+    state0 = (seed ^ _wy_mix((seed ^ s[0]) & M64, s[1])) & M64
 
     if length <= 16:
         if length >= 4:
             end = length - 4
             quarter = (length >> 3) << 2
-            a = (read(data, 0, 4) << 32) | read(data, quarter, 4)
-            b = (read(data, end, 4) << 32) | read(data, end - quarter, 4)
+            a = (_wy_read(data, 0, 4) << 32) | _wy_read(data, quarter, 4)
+            b = (_wy_read(data, end, 4) << 32) | _wy_read(data, end - quarter, 4)
         elif length > 0:
             a = (data[0] << 16) | (data[length >> 1] << 8) | data[length - 1]
             b = 0
         else:
             a = b = 0
     else:
-        # Longer strings: use FNV-1a as a stable fallback
-        return _fnv1a_32(data)
+        state = [state0, state0, state0]
+        i = 0
 
-    a ^= SECRET[1]
+        if length >= 48:
+            while i + 48 < length:
+                for j in range(3):
+                    ar = _wy_read(data, i + 8 * (2 * j), 8)
+                    br = _wy_read(data, i + 8 * (2 * j + 1), 8)
+                    state[j] = _wy_mix((ar ^ s[j + 1]) & M64, (br ^ state[j]) & M64)
+                i += 48
+            state[0] ^= state[1] ^ state[2]
+
+        remaining = data[i:]
+        k = 0
+        while k + 16 < len(remaining):
+            state[0] = _wy_mix(
+                (_wy_read(remaining, k, 8) ^ s[1]) & M64,
+                (_wy_read(remaining, k + 8, 8) ^ state[0]) & M64,
+            )
+            k += 16
+
+        a = _wy_read(data, length - 16, 8)
+        b = _wy_read(data, length - 8, 8)
+        state0 = state[0]
+
+    a ^= s[1]
     b ^= state0
-    lo, hi = mum(a & 0xFFFFFFFFFFFFFFFF, b & 0xFFFFFFFFFFFFFFFF)
-    return mix((lo ^ SECRET[0] ^ length) & 0xFFFFFFFFFFFFFFFF,
-               (hi ^ SECRET[1]) & 0xFFFFFFFFFFFFFFFF)
+    lo, hi = _wy_mum(a & M64, b & M64)
+    return _wy_mix((lo ^ s[0] ^ length) & M64, (hi ^ s[1]) & M64)
 
 
 def _roll_rarity(rng: _Mulberry32) -> str:
