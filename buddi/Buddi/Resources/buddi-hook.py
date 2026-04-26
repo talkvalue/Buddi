@@ -83,6 +83,7 @@ def get_cmux_surface():
 
 
 SESSION_STATS_PATH = os.path.expanduser("~/.buddi-session-stats.json")
+SESSION_STATS_LOCK_PATH = SESSION_STATS_PATH + ".lock"
 
 
 def load_session_stats():
@@ -95,13 +96,31 @@ def load_session_stats():
 
 def save_session_stats(stats):
     try:
-        with open(SESSION_STATS_PATH, "w") as f:
-            json.dump(stats, f)
+        import tempfile
+        dir_ = os.path.dirname(SESSION_STATS_PATH)
+        with tempfile.NamedTemporaryFile("w", dir=dir_, delete=False, suffix=".tmp") as tmp:
+            json.dump(stats, tmp)
+            tmp_path = tmp.name
+        os.replace(tmp_path, SESSION_STATS_PATH)
     except OSError:
         pass
 
 
-def update_session_stats(session_id, event, tool_name=None, denied=False):
+def update_session_stats_atomic(session_id, event, tool_name=None, denied=False):
+    import fcntl
+    try:
+        lock = open(SESSION_STATS_LOCK_PATH, "w")
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            return update_session_stats_atomic(session_id, event, tool_name=tool_name, denied=denied)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+            lock.close()
+    except OSError:
+        return update_session_stats_atomic(session_id, event, tool_name=tool_name, denied=denied)
+
+
+def update_session_stats_atomic(session_id, event, tool_name=None, denied=False):
     stats = load_session_stats()
     s = stats.setdefault(session_id, {
         "tool_counts": {},
@@ -209,13 +228,13 @@ def main():
 
     # Map events to status
     if event == "UserPromptSubmit":
-        session_stats = update_session_stats(session_id, event)
+        session_stats = update_session_stats_atomic(session_id, event)
         state["status"] = "processing"
         state["dialogue_flavor"] = compute_dialogue_flavor(session_stats)
 
     elif event == "PreToolUse":
         tool_name = data.get("tool_name")
-        session_stats = update_session_stats(session_id, event, tool_name=tool_name)
+        session_stats = update_session_stats_atomic(session_id, event, tool_name=tool_name)
         state["status"] = "running_tool"
         state["tool"] = tool_name
         state["tool_input"] = tool_input
@@ -262,7 +281,7 @@ def main():
                 sys.exit(0)
 
             elif decision == "deny":
-                update_session_stats(session_id, event, denied=True)
+                update_session_stats_atomic(session_id, event, denied=True)
                 # Output JSON to deny
                 output = {
                     "hookSpecificOutput": {

@@ -99,6 +99,8 @@ final class UsageService: ObservableObject {
                 if consecutiveFailures > 5 && usage.fiveHour == nil && usage.sevenDay == nil {
                     isAvailable = false
                 }
+                // Always restore to base interval on any failure path so we never loop fast
+                currentInterval = baseInterval
             }
             scheduleNextPoll()
         }
@@ -127,9 +129,10 @@ final class UsageService: ObservableObject {
         guard let cached = loadCachedUsage() else { return }
         usage = cached.usage
         isAvailable = true
-        // If cached data is stale, schedule an immediate re-fetch instead of waiting baseInterval
+        // If cached data is stale, use a short interval so the first poll fires quickly
+        // without creating a tight loop (minimum is clamped to 1s in scheduleNextPoll)
         if Date().timeIntervalSince(cached.fetchedAt) > baseInterval {
-            currentInterval = 0
+            currentInterval = 2
         }
     }
 

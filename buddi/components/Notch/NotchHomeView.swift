@@ -470,6 +470,11 @@ struct NotchHomeView: View {
                         return NSItemProvider(object: section.rawValue as NSString)
                     }
             }
+            .onAppear {
+                // Clear any stale drag state left from a cancelled drag
+                draggingSection = nil
+                dragOverSection = nil
+            }
 
             if shouldShowCamera {
                 CameraPreviewView(webcamManager: webcamManager)
@@ -541,6 +546,10 @@ struct SectionDropDelegate: DropDelegate {
 
     func dropExited(info: DropInfo) {
         if dragOver == target { dragOver = nil }
+        // Clear dragging state if the user cancels by dragging outside all targets
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            if dragOver == nil { dragging = nil }
+        }
     }
 
     func performDrop(info: DropInfo) -> Bool {
