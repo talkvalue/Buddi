@@ -43,8 +43,14 @@ final class UsageService: ObservableObject {
     private init() {}
 
     func startPolling() {
-        guard pollTimer == nil else { return }
         loadCache()
+        // If already polling, only kick off a fresh fetch if the last one is stale (>5 min old)
+        guard pollTimer == nil else {
+            if let cached = loadCachedUsage(), Date().timeIntervalSince(cached.fetchedAt) > baseInterval {
+                poll()
+            }
+            return
+        }
         poll()
     }
 
@@ -60,7 +66,8 @@ final class UsageService: ObservableObject {
 
     private func scheduleNextPoll() {
         pollTimer?.invalidate()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: currentInterval, repeats: false) { [weak self] _ in
+        let interval = max(currentInterval, 1)
+        pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.poll()
             }
@@ -71,6 +78,9 @@ final class UsageService: ObservableObject {
         pollTask = Task {
             guard let token = Self.readOAuthToken() else {
                 isAvailable = false
+                // Reset interval so a missing token doesn't trap us in the
+                // 2-second stale-cache fast path forever
+                currentInterval = baseInterval
                 scheduleNextPoll()
                 return
             }
@@ -92,6 +102,8 @@ final class UsageService: ObservableObject {
                 if consecutiveFailures > 5 && usage.fiveHour == nil && usage.sevenDay == nil {
                     isAvailable = false
                 }
+                // Always restore to base interval on any failure path so we never loop fast
+                currentInterval = baseInterval
             }
             scheduleNextPoll()
         }
@@ -111,11 +123,20 @@ final class UsageService: ObservableObject {
         let fetchedAt: Date
     }
 
+    private func loadCachedUsage() -> CachedUsage? {
+        guard let data = try? Data(contentsOf: Self.cacheURL) else { return nil }
+        return try? JSONDecoder().decode(CachedUsage.self, from: data)
+    }
+
     private func loadCache() {
-        guard let data = try? Data(contentsOf: Self.cacheURL),
-              let cached = try? JSONDecoder().decode(CachedUsage.self, from: data) else { return }
+        guard let cached = loadCachedUsage() else { return }
         usage = cached.usage
         isAvailable = true
+        // If cached data is stale, use a short interval so the first poll fires quickly
+        // without creating a tight loop (minimum is clamped to 1s in scheduleNextPoll)
+        if Date().timeIntervalSince(cached.fetchedAt) > baseInterval {
+            currentInterval = 2
+        }
     }
 
     private func saveCache() {

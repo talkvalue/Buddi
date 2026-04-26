@@ -415,6 +415,12 @@ struct VolumeControlView: View {
     }
 }
 
+// MARK: - Section Order
+
+enum NotchSection: String, CaseIterable, Codable {
+    case music, buddy, calendar
+}
+
 // MARK: - Main View
 
 struct NotchHomeView: View {
@@ -424,13 +430,16 @@ struct NotchHomeView: View {
     @ObservedObject var coordinator = BuddiViewCoordinator.shared
     let albumArtNamespace: Namespace.ID
 
+    @State private var sectionOrder: [NotchSection] = Self.loadSectionOrder()
+    @State private var draggingSection: NotchSection? = nil
+    @State private var dragOverSection: NotchSection? = nil
+
     var body: some View {
         Group {
             if !coordinator.firstLaunch {
                 mainContent
             }
         }
-        // simplified: use a straightforward opacity transition
         .transition(.opacity)
     }
 
@@ -440,16 +449,31 @@ struct NotchHomeView: View {
 
     private var mainContent: some View {
         HStack(alignment: .top, spacing: (shouldShowCamera && Defaults[.showCalendar]) ? 10 : 15) {
-            MusicPlayerView(albumArtNamespace: albumArtNamespace)
-
-            if Defaults[.showCalendar] {
-                CalendarView()
-                    .frame(width: shouldShowCamera ? 170 : 215)
-                    .onHover { isHovering in
-                        vm.isHoveringCalendar = isHovering
+            ForEach(sectionOrder, id: \.self) { section in
+                sectionView(for: section)
+                    .opacity(draggingSection == section ? 0.4 : 1.0)
+                    .overlay(
+                        dragOverSection == section && draggingSection != section
+                            ? RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                            : nil
+                    )
+                    .onDrop(of: [.text], delegate: SectionDropDelegate(
+                        target: section,
+                        order: $sectionOrder,
+                        dragging: $draggingSection,
+                        dragOver: $dragOverSection,
+                        onDrop: saveSectionOrder
+                    ))
+                    .onDrag {
+                        draggingSection = section
+                        return NSItemProvider(object: section.rawValue as NSString)
                     }
-                    .environmentObject(vm)
-                    .transition(.opacity)
+            }
+            .onAppear {
+                // Clear any stale drag state left from a cancelled drag
+                draggingSection = nil
+                dragOverSection = nil
             }
 
             if shouldShowCamera {
@@ -462,6 +486,125 @@ struct NotchHomeView: View {
         }
         .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .top)), removal: .opacity))
         .blur(radius: vm.notchState == .closed ? 30 : 0)
+    }
+
+    @ViewBuilder
+    private func sectionView(for section: NotchSection) -> some View {
+        switch section {
+        case .music:
+            MusicPlayerView(albumArtNamespace: albumArtNamespace)
+        case .buddy:
+            BuddyInlineView()
+                .transition(.opacity)
+        case .calendar:
+            if Defaults[.showCalendar] {
+                CalendarView()
+                    .frame(width: shouldShowCamera ? 170 : 215)
+                    .onHover { isHovering in vm.isHoveringCalendar = isHovering }
+                    .environmentObject(vm)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    // MARK: - Section order persistence
+
+    private static let sectionOrderKey = "notchSectionOrder"
+
+    private static func loadSectionOrder() -> [NotchSection] {
+        guard let raw = UserDefaults.standard.array(forKey: sectionOrderKey) as? [String] else {
+            return [.music, .buddy, .calendar]
+        }
+        let decoded = raw.compactMap { NotchSection(rawValue: $0) }
+        let missing = NotchSection.allCases.filter { !decoded.contains($0) }
+        return decoded + missing
+    }
+
+    private func saveSectionOrder() {
+        UserDefaults.standard.set(sectionOrder.map(\.rawValue), forKey: Self.sectionOrderKey)
+    }
+}
+
+// MARK: - Drag and Drop Delegate
+
+struct SectionDropDelegate: DropDelegate {
+    let target: NotchSection
+    @Binding var order: [NotchSection]
+    @Binding var dragging: NotchSection?
+    @Binding var dragOver: NotchSection?
+    let onDrop: () -> Void
+
+    func dropEntered(info: DropInfo) {
+        dragOver = target
+        guard let dragging, dragging != target,
+              let from = order.firstIndex(of: dragging),
+              let to = order.firstIndex(of: target) else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            order.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        }
+        // Persist immediately on every reorder so cancelled drags still keep the new order
+        onDrop()
+    }
+
+    func dropExited(info: DropInfo) {
+        if dragOver == target { dragOver = nil }
+        // Clear dragging state if the user cancels by dragging outside all targets
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            if dragOver == nil { dragging = nil }
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragging = nil
+        dragOver = nil
+        onDrop()
+        return true
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+}
+
+// MARK: - Buddy Inline View
+
+/// Compact buddy widget shown between the music player and calendar in the notch home view.
+struct BuddyInlineView: View {
+    @ObservedObject private var usageService = UsageService.shared
+
+    var body: some View {
+        VStack(spacing: 3) {
+            ASCIIFullSpriteView(
+                animator: BuddyManager.shared.animator,
+                identity: BuddyManager.shared.effectiveIdentity,
+                fontSize: 8
+            )
+
+            Text(BuddyManager.shared.effectiveIdentity.name
+                 ?? BuddyManager.shared.effectiveIdentity.species.rawValue.capitalized)
+                .font(.caption2.weight(.medium).monospaced())
+                .foregroundColor(Color(nsColor: BuddyManager.shared.effectiveIdentity.rarity.nsColor).opacity(0.8))
+
+            if usageService.isAvailable {
+                if let fh = usageService.usage.fiveHour {
+                    UsageBar(
+                        label: "Session",
+                        percent: fh.utilization / 100,
+                        detail: "\(Int(fh.utilization))%",
+                        color: fh.utilization > 80 ? .red : fh.utilization > 60 ? .yellow : Color(red: 0.35, green: 0.55, blue: 1.0)
+                    )
+                }
+                if let sd = usageService.usage.sevenDay {
+                    UsageBar(
+                        label: "Weekly",
+                        percent: sd.utilization / 100,
+                        detail: "\(Int(sd.utilization))%",
+                        color: sd.utilization > 80 ? .red : sd.utilization > 60 ? .yellow : Color(red: 0.35, green: 0.55, blue: 1.0)
+                    )
+                }
+            }
+        }
+        .frame(width: 100)
     }
 }
 
