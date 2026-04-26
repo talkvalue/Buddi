@@ -3,11 +3,13 @@
 Buddi Hook
 - Sends session state to Buddi.app via Unix socket
 - For PermissionRequest: waits for user decision from the app
+- Tracks session rhythm for buddy dialogue flavoring
 """
 import json
 import os
 import socket
 import sys
+import time
 
 SOCKET_PATH = "/tmp/buddi.sock"
 TIMEOUT_SECONDS = 300  # 5 minutes for permission decisions
@@ -80,6 +82,79 @@ def get_cmux_surface():
     return None, None
 
 
+SESSION_STATS_PATH = os.path.expanduser("~/.buddi-session-stats.json")
+
+
+def load_session_stats():
+    try:
+        with open(SESSION_STATS_PATH) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_session_stats(stats):
+    try:
+        with open(SESSION_STATS_PATH, "w") as f:
+            json.dump(stats, f)
+    except OSError:
+        pass
+
+
+def update_session_stats(session_id, event, tool_name=None, denied=False):
+    stats = load_session_stats()
+    s = stats.setdefault(session_id, {
+        "tool_counts": {},
+        "denial_count": 0,
+        "prompt_count": 0,
+        "session_start": time.time(),
+        "last_event_time": time.time(),
+    })
+
+    s["last_event_time"] = time.time()
+
+    if event == "PreToolUse" and tool_name:
+        s["tool_counts"][tool_name] = s["tool_counts"].get(tool_name, 0) + 1
+    elif event == "UserPromptSubmit":
+        s["prompt_count"] = s.get("prompt_count", 0) + 1
+    elif denied:
+        s["denial_count"] = s.get("denial_count", 0) + 1
+
+    save_session_stats(stats)
+    return s
+
+
+def compute_dialogue_flavor(stats):
+    """
+    Returns a dialogue flavor string based on session rhythm.
+    This is purely additive — it never affects buddy identity.
+    The Swift side uses this to vary what the buddy says, not what it looks like.
+    """
+    tool_counts = stats.get("tool_counts", {})
+    denial_count = stats.get("denial_count", 0)
+    prompt_count = max(stats.get("prompt_count", 1), 1)
+    total_tools = sum(tool_counts.values())
+
+    chaos_rate = denial_count / prompt_count
+
+    shell_tools = {"Bash", "computer"}
+    explore_tools = {"Read", "Grep", "LS", "Glob"}
+
+    shell_uses = sum(tool_counts.get(t, 0) for t in shell_tools)
+    explore_uses = sum(tool_counts.get(t, 0) for t in explore_tools)
+
+    if chaos_rate > 0.4:
+        return "chaotic"
+    elif total_tools > 0 and shell_uses / max(total_tools, 1) > 0.5:
+        return "runner"
+    elif total_tools > 0 and explore_uses / max(total_tools, 1) > 0.5:
+        return "explorer"
+    elif total_tools > 20 and chaos_rate < 0.1:
+        return "methodical"
+    else:
+        return "neutral"
+
+
 def send_event(state):
     """Send event to app, return response if any"""
     try:
@@ -134,13 +209,17 @@ def main():
 
     # Map events to status
     if event == "UserPromptSubmit":
-        # User just sent a message - Claude is now processing
+        session_stats = update_session_stats(session_id, event)
         state["status"] = "processing"
+        state["dialogue_flavor"] = compute_dialogue_flavor(session_stats)
 
     elif event == "PreToolUse":
+        tool_name = data.get("tool_name")
+        session_stats = update_session_stats(session_id, event, tool_name=tool_name)
         state["status"] = "running_tool"
-        state["tool"] = data.get("tool_name")
+        state["tool"] = tool_name
         state["tool_input"] = tool_input
+        state["dialogue_flavor"] = compute_dialogue_flavor(session_stats)
         # Send tool_use_id to Swift for caching
         tool_use_id_from_event = data.get("tool_use_id")
         if tool_use_id_from_event:
@@ -158,8 +237,10 @@ def main():
     elif event == "PermissionRequest":
         # This is where we can control the permission
         state["status"] = "waiting_for_approval"
-        state["tool"] = data.get("tool_name")
+        tool_name = data.get("tool_name")
+        state["tool"] = tool_name
         state["tool_input"] = tool_input
+        # Count denials for chaos tracking — updated after response below
         # tool_use_id lookup handled by Swift-side cache from PreToolUse
 
         # Send to app and wait for decision
@@ -181,6 +262,7 @@ def main():
                 sys.exit(0)
 
             elif decision == "deny":
+                update_session_stats(session_id, event, denied=True)
                 # Output JSON to deny
                 output = {
                     "hookSpecificOutput": {

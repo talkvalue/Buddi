@@ -43,8 +43,14 @@ final class UsageService: ObservableObject {
     private init() {}
 
     func startPolling() {
-        guard pollTimer == nil else { return }
         loadCache()
+        // If already polling, only kick off a fresh fetch if the last one is stale (>5 min old)
+        guard pollTimer == nil else {
+            if let cached = loadCachedUsage(), Date().timeIntervalSince(cached.fetchedAt) > baseInterval {
+                poll()
+            }
+            return
+        }
         poll()
     }
 
@@ -60,7 +66,8 @@ final class UsageService: ObservableObject {
 
     private func scheduleNextPoll() {
         pollTimer?.invalidate()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: currentInterval, repeats: false) { [weak self] _ in
+        let interval = max(currentInterval, 1)
+        pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.poll()
             }
@@ -111,11 +118,19 @@ final class UsageService: ObservableObject {
         let fetchedAt: Date
     }
 
+    private func loadCachedUsage() -> CachedUsage? {
+        guard let data = try? Data(contentsOf: Self.cacheURL) else { return nil }
+        return try? JSONDecoder().decode(CachedUsage.self, from: data)
+    }
+
     private func loadCache() {
-        guard let data = try? Data(contentsOf: Self.cacheURL),
-              let cached = try? JSONDecoder().decode(CachedUsage.self, from: data) else { return }
+        guard let cached = loadCachedUsage() else { return }
         usage = cached.usage
         isAvailable = true
+        // If cached data is stale, schedule an immediate re-fetch instead of waiting baseInterval
+        if Date().timeIntervalSince(cached.fetchedAt) > baseInterval {
+            currentInterval = 0
+        }
     }
 
     private func saveCache() {
