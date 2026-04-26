@@ -29,9 +29,15 @@ def _connect_to_buddi():
         host, sep, port = BUDDI_HOST.rpartition(":")
         if not sep or not host:
             raise OSError(f"BUDDI_HOST must be host:port, got {BUDDI_HOST!r}")
+        try:
+            port_num = int(port)
+        except ValueError:
+            raise OSError(f"BUDDI_HOST port must be an integer, got {port!r}")
+        if not 0 < port_num <= 65535:
+            raise OSError(f"BUDDI_HOST port {port_num} out of range (1-65535)")
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(TIMEOUT_SECONDS)
-        sock.connect((host, int(port)))
+        sock.connect((host, port_num))
     else:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.settimeout(TIMEOUT_SECONDS)
