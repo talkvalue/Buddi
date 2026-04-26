@@ -1,16 +1,42 @@
 #!/usr/bin/env python3
 """
 Buddi Hook
-- Sends session state to Buddi.app via Unix socket
+- Sends session state to Buddi.app via Unix socket (local) or TCP (remote)
 - For PermissionRequest: waits for user decision from the app
+
+Environment variables:
+  BUDDI_HOST    If set (e.g. "localhost:9999"), connect over TCP instead of
+                a Unix socket. Intended for Claude Code running on a remote
+                VM with an SSH reverse port-forward back to the Mac running
+                Buddi. Always tunnel over SSH — events may include prompts,
+                tool calls, and file paths.
+  BUDDI_SOCKET  Override the default Unix socket path (/tmp/buddi.sock).
+                Ignored when BUDDI_HOST is set.
 """
 import json
 import os
 import socket
 import sys
 
-SOCKET_PATH = "/tmp/buddi.sock"
+BUDDI_SOCKET = os.environ.get("BUDDI_SOCKET", "/tmp/buddi.sock")
+BUDDI_HOST = os.environ.get("BUDDI_HOST")
 TIMEOUT_SECONDS = 300  # 5 minutes for permission decisions
+
+
+def _connect_to_buddi():
+    """Open a connection to Buddi (TCP if BUDDI_HOST is set, else Unix socket)."""
+    if BUDDI_HOST:
+        host, sep, port = BUDDI_HOST.rpartition(":")
+        if not sep or not host:
+            raise OSError(f"BUDDI_HOST must be host:port, got {BUDDI_HOST!r}")
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(TIMEOUT_SECONDS)
+        sock.connect((host, int(port)))
+    else:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(TIMEOUT_SECONDS)
+        sock.connect(BUDDI_SOCKET)
+    return sock
 
 
 def get_tty():
@@ -83,9 +109,7 @@ def get_cmux_surface():
 def send_event(state):
     """Send event to app, return response if any"""
     try:
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(TIMEOUT_SECONDS)
-        sock.connect(SOCKET_PATH)
+        sock = _connect_to_buddi()
         sock.sendall(json.dumps(state).encode())
 
         # For permission requests, wait for response
