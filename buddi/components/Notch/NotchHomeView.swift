@@ -542,6 +542,8 @@ struct SectionDropDelegate: DropDelegate {
         withAnimation(.easeInOut(duration: 0.2)) {
             order.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
         }
+        // Persist immediately on every reorder so cancelled drags still keep the new order
+        onDrop()
     }
 
     func dropExited(info: DropInfo) {

@@ -106,21 +106,7 @@ def save_session_stats(stats):
         pass
 
 
-def update_session_stats_atomic(session_id, event, tool_name=None, denied=False):
-    import fcntl
-    try:
-        lock = open(SESSION_STATS_LOCK_PATH, "w")
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        try:
-            return update_session_stats_atomic(session_id, event, tool_name=tool_name, denied=denied)
-        finally:
-            fcntl.flock(lock, fcntl.LOCK_UN)
-            lock.close()
-    except OSError:
-        return update_session_stats_atomic(session_id, event, tool_name=tool_name, denied=denied)
-
-
-def update_session_stats_atomic(session_id, event, tool_name=None, denied=False):
+def _update_session_stats_unlocked(session_id, event, tool_name=None, denied=False):
     stats = load_session_stats()
     s = stats.setdefault(session_id, {
         "tool_counts": {},
@@ -141,6 +127,22 @@ def update_session_stats_atomic(session_id, event, tool_name=None, denied=False)
 
     save_session_stats(stats)
     return s
+
+
+def update_session_stats_atomic(session_id, event, tool_name=None, denied=False):
+    """File-locked variant — safe under concurrent hook invocations."""
+    import fcntl
+    try:
+        lock = open(SESSION_STATS_LOCK_PATH, "w")
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            return _update_session_stats_unlocked(session_id, event, tool_name=tool_name, denied=denied)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+            lock.close()
+    except OSError:
+        # Lock file unavailable — fall back to unlocked update rather than dropping the event
+        return _update_session_stats_unlocked(session_id, event, tool_name=tool_name, denied=denied)
 
 
 def compute_dialogue_flavor(stats):

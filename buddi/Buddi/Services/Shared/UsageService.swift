@@ -78,6 +78,9 @@ final class UsageService: ObservableObject {
         pollTask = Task {
             guard let token = Self.readOAuthToken() else {
                 isAvailable = false
+                // Reset interval so a missing token doesn't trap us in the
+                // 2-second stale-cache fast path forever
+                currentInterval = baseInterval
                 scheduleNextPoll()
                 return
             }
