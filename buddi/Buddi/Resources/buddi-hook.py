@@ -22,6 +22,16 @@ BUDDI_SOCKET = os.environ.get("BUDDI_SOCKET", "/tmp/buddi.sock")
 BUDDI_HOST = os.environ.get("BUDDI_HOST")
 TIMEOUT_SECONDS = 300  # 5 minutes for permission decisions
 
+if BUDDI_HOST:
+    _host = BUDDI_HOST.rpartition(":")[0].strip("[]")
+    if _host not in ("localhost", "127.0.0.1", "::1"):
+        print(
+            f"buddi-hook: warning: BUDDI_HOST={BUDDI_HOST!r} is not a loopback "
+            "address; events contain prompts and tool inputs — only use over "
+            "an SSH tunnel.",
+            file=sys.stderr,
+        )
+
 
 def _connect_to_buddi():
     """Open a connection to Buddi (TCP if BUDDI_HOST is set, else Unix socket)."""
