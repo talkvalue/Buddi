@@ -242,7 +242,7 @@ jobs:
       - name: Update Homebrew cask
         env:
           VERSION: ${{ steps.version.outputs.VERSION }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
         run: |
           DMG_URL="https://github.com/talkvalue/Buddi/releases/download/v${VERSION}/buddi-${VERSION}.dmg"
           for attempt in 1 2 3; do
@@ -251,7 +251,10 @@ jobs:
           done
           [[ -n "${SHA256:-}" ]] || { echo "::error::Failed to download DMG for SHA256"; exit 1; }
 
-          git clone https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/talkvalue/homebrew-buddi.git $RUNNER_TEMP/tap
+          echo "$TAP_DEPLOY_KEY" > "$RUNNER_TEMP/tap_key"
+          chmod 600 "$RUNNER_TEMP/tap_key"
+          export GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/tap_key -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes"
+          git clone git@github.com:talkvalue/homebrew-buddi.git $RUNNER_TEMP/tap
           mkdir -p $RUNNER_TEMP/tap/Casks
 
           cat > $RUNNER_TEMP/tap/Casks/buddi.rb << CASK
@@ -290,7 +293,8 @@ jobs:
           git add Casks/buddi.rb
           git diff --cached --quiet && echo "No cask changes" || \
             git commit -m "Update Buddi to v${VERSION}" && \
-            git push "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/talkvalue/homebrew-buddi.git" HEAD:main
+            git push origin HEAD:main
+          rm -f "$RUNNER_TEMP/tap_key"
 
       - name: Cleanup secrets
         if: always()
