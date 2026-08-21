@@ -3,6 +3,14 @@
     <channel>
         <title>Buddi</title>
         <item>
+            <title>0.1.5</title>
+            <pubDate>Fri, 21 Aug 2026 08:38:54 +0000</pubDate>
+            <sparkle:version>275</sparkle:version>
+            <sparkle:shortVersionString>0.1.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/talkvalue/Buddi/releases/download/v0.1.5/buddi-0.1.5.dmg" length="9753873" type="application/octet-stream" sparkle:edSignature="tXNLstYp9gB9CzS6fRS1QHXpWOpqTLcsQsCwPLnKuQ+ktDV0p6t4k3XI3H+3laNUUSLTl9j8mtX0rosZiQMiDw=="/>
+        </item>
+        <item>
             <title>0.1.4</title>
             <pubDate>Mon, 10 Aug 2026 06:01:22 +0000</pubDate>
             <sparkle:version>274</sparkle:version>
@@ -17,14 +25,6 @@
             <sparkle:shortVersionString>0.1.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/talkvalue/Buddi/releases/download/v0.1.3/buddi-0.1.3.dmg" length="9743892" type="application/octet-stream"/>
-        </item>
-        <item>
-            <title>0.1.2</title>
-            <pubDate>Thu, 16 Apr 2026 08:00:58 +0000</pubDate>
-            <sparkle:version>272</sparkle:version>
-            <sparkle:shortVersionString>0.1.2</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/talkvalue/Buddi/releases/download/v0.1.2/buddi-0.1.2.dmg" length="9747263" type="application/octet-stream"/>
         </item>
     </channel>
 </rss>
