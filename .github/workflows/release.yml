@@ -205,6 +205,13 @@ jobs:
             -o Updates/appcast.xml \
             $RUNNER_TEMP/appcast-staging
 
+          # generate_appcast only warns (and writes an unsigned item) when the
+          # private key doesn't match SUPublicEDKey in Info.plist — fail loud instead.
+          grep "releases/download/v$VERSION/" Updates/appcast.xml | grep -q 'sparkle:edSignature' || {
+            echo "::error::appcast item for v$VERSION has no sparkle:edSignature — SPARKLE_PRIVATE_KEY does not match SUPublicEDKey in buddi/Info.plist"
+            exit 1
+          }
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
