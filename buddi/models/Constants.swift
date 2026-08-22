@@ -73,7 +73,7 @@ extension Defaults.Keys {
     static let showInDock = Key<Bool>("showInDock", default: false)
     static let showOnAllDisplays = Key<Bool>("showOnAllDisplays", default: false)
     static let automaticallySwitchDisplay = Key<Bool>("automaticallySwitchDisplay", default: true)
-    static let releaseName = Key<String>("releaseName", default: "Rare Rabbit (At Tophat)")
+    static let releaseName = Key<String>("releaseName", default: "Epic Mushroom (Degree Tinyduck)")
     
     // MARK: Behavior
     static let minimumHoverDuration = Key<TimeInterval>("minimumHoverDuration", default: 0.3)
