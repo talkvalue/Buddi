@@ -98,9 +98,7 @@ class SettingsWindowController: NSWindowController {
     
     private func relinquishFocus() {
         window?.orderOut(nil)
-        
-        // Set app back to accessory mode immediately
-        NSApp.setActivationPolicy(.accessory)
+        NSApp.setActivationPolicy(Defaults[.showInDock] ? .regular : .accessory)
     }
 }
 

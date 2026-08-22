@@ -184,7 +184,7 @@ class BuddiViewModel: NSObject, ObservableObject {
                     }
                 }
 
-                NSApp.setActivationPolicy(.accessory)
+                NSApp.setActivationPolicy(Defaults[.showInDock] ? .regular : .accessory)
                 NSApp.deactivate()
             }
 

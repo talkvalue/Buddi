@@ -77,6 +77,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        SettingsWindowController.shared.showWindow()
+        return true
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         NotificationCenter.default.removeObserver(self)
         if let observer = screenLockedObserver {
@@ -474,6 +479,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.showOnboardingWindow(step: .musicPermission)
             }
         }
+
+        NSApp.setActivationPolicy(Defaults[.showInDock] ? .regular : .accessory)
 
         previousScreens = NSScreen.screens
         HookInstaller.installIfNeeded()
